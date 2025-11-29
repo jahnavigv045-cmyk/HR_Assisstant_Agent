@@ -1,0 +1,27 @@
+# Ignore environment variables
+.env
+
+# Ignore Google service account keys
+service_account.json
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environment folder if you have one
+venv/
+
+# Ignore logs
+*.log
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore VS Code settings folder
+.vscode/
+
+# Ignore pytest cache
+.pytest_cache/

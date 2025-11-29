@@ -1,0 +1,15 @@
+streamlit
+openai
+python-dotenv
+PyPDF2
+docx2txt
+SpeechRecognition
+numpy
+streamlit-webrtc
+av
+gTTS
+google-auth
+google-auth-oauthlib
+google-api-python-client
+gspread
+pydub
