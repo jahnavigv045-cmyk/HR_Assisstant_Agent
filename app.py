@@ -24,15 +24,33 @@ if not api_key:
 client = OpenAI(api_key=api_key)
 
 # ------------------- GOOGLE SHEETS SETUP ---------------
+import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
+import os
+import json
+
 gc = None
 sheet_onboarding = None
 sheet_resume = None
 sheet_interview = None
+
 try:
-    gc = gspread.service_account("service_account.json")
+    # Check if running on Streamlit Cloud
+    if "GOOGLE_SERVICE_ACCOUNT" in st.secrets:
+        # Use secrets for cloud deployment
+        google_creds = st.secrets["google_service_account"]
+        creds = Credentials.from_service_account_info(google_creds)
+        gc = gspread.authorize(creds)
+    else:
+        # Local mode, use local JSON file
+        gc = gspread.service_account(filename="service_account.json")
+
+    # Open sheets
     sheet_onboarding = gc.open("HR_Agent_Records").worksheet("Onboarding")
     sheet_resume = gc.open("HR_Agent_Records").worksheet("Resume_Screening")
     sheet_interview = gc.open("HR_Agent_Records").worksheet("Interviews")
+
 except Exception as e:
     st.warning("⚠ Google Sheets not available or worksheets missing. Continue without Sheets logging.")
 
