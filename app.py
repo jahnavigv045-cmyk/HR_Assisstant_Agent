@@ -209,28 +209,31 @@ with tabs[2]:
             return frame
 
     mic_test_processor = MicTestProcessor()
-    mic_test_ctx = webrtc_streamer(
-    key="mic_test",
-    mode=WebRtcMode.SENDRECV,
-    audio_processor_factory=lambda: mic_test_processor,
-    media_stream_constraints={
-        "audio": {
-            "deviceId": "default",
-            "echoCancellation": True,
-            "noiseSuppression": True,
-            "autoGainControl": True,
-            "advanced": [
-                {"echoCancellation": True},
-                {"noiseSuppression": True},
-                {"autoGainControl": True}
-            ]
-        },
-        "video": False
-    },
-    async_processing=True
-)
 
-
+    # ----- Safe webrtc_streamer call -----
+    try:
+        mic_test_ctx = webrtc_streamer(
+            key="mic_test",
+            mode=WebRtcMode.SENDRECV,
+            audio_processor_factory=lambda: mic_test_processor,
+            media_stream_constraints={
+                "audio": {
+                    "deviceId": "default",
+                    "echoCancellation": True,
+                    "noiseSuppression": True,
+                    "autoGainControl": True,
+                    "advanced": [
+                        {"echoCancellation": True},
+                        {"noiseSuppression": True},
+                        {"autoGainControl": True}
+                    ]
+                },
+                "video": False
+            },
+            async_processing=True
+        )
+    except Exception as e:
+        st.warning(f"⚠ Microphone initialization failed: {e}")
 
     st.info("💡 Speak something like: 'Testing microphone, one two three'")
 
@@ -305,28 +308,29 @@ END:VCALENDAR"""
                 return frame
 
         audio_processor = AudioProcessor()
-        cctx = webrtc_streamer(
-    key=f"audio_{st.session_state.question_number}",
-    mode=WebRtcMode.SENDRECV,
-    audio_processor_factory=lambda: audio_processor,
-    media_stream_constraints={
-        "audio": {
-            "deviceId": "default",
-            "echoCancellation": True,
-            "noiseSuppression": True,
-            "autoGainControl": True,
-            "advanced": [
-                {"echoCancellation": True},
-                {"noiseSuppression": True},
-                {"autoGainControl": True}
-            ]
-        },
-        "video": False
-    },
-    async_processing=True
-)
-
-
+        try:
+            cctx = webrtc_streamer(
+                key=f"audio_{st.session_state.question_number}",
+                mode=WebRtcMode.SENDRECV,
+                audio_processor_factory=lambda: audio_processor,
+                media_stream_constraints={
+                    "audio": {
+                        "deviceId": "default",
+                        "echoCancellation": True,
+                        "noiseSuppression": True,
+                        "autoGainControl": True,
+                        "advanced": [
+                            {"echoCancellation": True},
+                            {"noiseSuppression": True},
+                            {"autoGainControl": True}
+                        ]
+                    },
+                    "video": False
+                },
+                async_processing=True
+            )
+        except Exception as e:
+            st.warning(f"⚠ Audio recorder initialization failed: {e}")
 
         if st.button("🟢 Submit Answer"):
             if audio_processor.audio is None:
@@ -372,6 +376,7 @@ Return:
     if st.session_state.last_eval:
         st.markdown("### 🧾 Last Evaluation")
         st.write(st.session_state.last_eval)
+
 
 # ------------------- TAB 4: EMPLOYEE ONBOARDING -----------------
 with tabs[3]:
