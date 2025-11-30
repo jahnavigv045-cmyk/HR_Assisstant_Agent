@@ -32,24 +32,27 @@ sheet_onboarding = None
 sheet_resume = None
 sheet_interview = None
 
+SCOPES_SHEETS = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
 try:
     if "google_service_account" in st.secrets:
-        # Streamlit Cloud
         google_creds = st.secrets["google_service_account"]
-        creds_sheets = Credentials.from_service_account_info(google_creds)
-        gc = gspread.authorize(creds_sheets)
+        creds_sheets = Credentials.from_service_account_info(google_creds, scopes=SCOPES_SHEETS)
     else:
-        # Local environment
-        creds_sheets = Credentials.from_service_account_file("service_account.json")
-        gc = gspread.authorize(creds_sheets)
+        creds_sheets = Credentials.from_service_account_file("service_account.json", scopes=SCOPES_SHEETS)
 
-    # Open your worksheets
+    gc = gspread.authorize(creds_sheets)
+
     sheet_onboarding = gc.open("HR_Agent_Records").worksheet("Onboarding")
     sheet_resume = gc.open("HR_Agent_Records").worksheet("Resume_Screening")
     sheet_interview = gc.open("HR_Agent_Records").worksheet("Interviews")
 
 except Exception as e:
     st.warning(f"⚠ Google Sheets not available: {e}")
+
 
 # ------------------- GOOGLE CALENDAR SETUP -------------
 from googleapiclient.discovery import build
