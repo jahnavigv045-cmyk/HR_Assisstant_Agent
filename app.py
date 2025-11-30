@@ -23,46 +23,62 @@ if not api_key:
     st.stop()
 client = OpenAI(api_key=api_key)
 
-# ------------------- LOCAL GOOGLE SHEETS & CALENDAR SETUP ---------------
+# ------------------- GOOGLE SHEETS SETUP ---------------
 import gspread
 from google.oauth2.service_account import Credentials
+
+gc = None
+sheet_onboarding = None
+sheet_resume = None
+sheet_interview = None
+
+try:
+    if "google_service_account" in st.secrets:
+        # Streamlit Cloud
+        google_creds = st.secrets["google_service_account"]
+        creds_sheets = Credentials.from_service_account_info(google_creds)
+        gc = gspread.authorize(creds_sheets)
+    else:
+        # Local environment
+        creds_sheets = Credentials.from_service_account_file("service_account.json")
+        gc = gspread.authorize(creds_sheets)
+
+    # Open your worksheets
+    sheet_onboarding = gc.open("HR_Agent_Records").worksheet("Onboarding")
+    sheet_resume = gc.open("HR_Agent_Records").worksheet("Resume_Screening")
+    sheet_interview = gc.open("HR_Agent_Records").worksheet("Interviews")
+
+except Exception as e:
+    st.warning(f"⚠ Google Sheets not available: {e}")
+
+# ------------------- GOOGLE CALENDAR SETUP -------------
 from googleapiclient.discovery import build
-from datetime import datetime, timedelta
-import streamlit as st
+from google.oauth2.service_account import Credentials
 
-# ------------------- SCOPES -------------------
-SHEETS_SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar']
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+calendar_service = None
 
-# ------------------- SHEETS SETUP -------------------
 try:
-    creds_sheets = Credentials.from_service_account_file("service_account.json", scopes=SHEETS_SCOPES)
-    gc = gspread.authorize(creds_sheets)
-
-    # Open worksheets
-    SHEET_NAME = "HR_Agent_Records_Local"
-    sheet_onboarding = gc.open(SHEET_NAME).worksheet("Onboarding")
-    sheet_resume = gc.open(SHEET_NAME).worksheet("Resume_Screening")
-    sheet_interview = gc.open(SHEET_NAME).worksheet("Interviews")
+    if "google_service_account" in st.secrets:
+        # Streamlit Cloud
+        google_creds = st.secrets["google_service_account"]
+        creds_calendar = Credentials.from_service_account_info(google_creds, scopes=SCOPES)
+        calendar_service = build('calendar', 'v3', credentials=creds_calendar)
+    else:
+        # Local environment
+        creds_calendar = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
+        calendar_service = build('calendar', 'v3', credentials=creds_calendar)
 
 except Exception as e:
-    st.warning(f"⚠ Google Sheets setup failed (Local): {e}")
+    st.warning(f"⚠ Google Calendar not available: {e}")
 
-# ------------------- CALENDAR SETUP -------------------
-try:
-    creds_calendar = Credentials.from_service_account_file("service_account.json", scopes=CALENDAR_SCOPES)
-    calendar_service = build('calendar', 'v3', credentials=creds_calendar)
-    calendar_id = "primary"  # default local calendar
-except Exception as e:
-    st.warning(f"⚠ Google Calendar setup failed (Local): {e}")
 
-# ------------------- FUNCTION TO CREATE CALENDAR EVENTS -------------------
 def create_calendar_entry(title, description, start_dt=None, duration_hours=1, attendee_email=None, type='event'):
     if calendar_service is None:
         st.warning("⚠ Calendar service not available. Cannot create event.")
         return None
 
-    if type.lower() == 'task':
+    if type == 'task':
         event_body = {
             'summary': f"Task: {title}",
             'description': description,
@@ -70,9 +86,6 @@ def create_calendar_entry(title, description, start_dt=None, duration_hours=1, a
             'end': {'date': datetime.today().date().isoformat()},
         }
     else:
-        if start_dt is None:
-            st.warning("⚠ Start datetime is required for events/appointments")
-            return None
         end_dt = start_dt + timedelta(hours=duration_hours)
         event_body = {
             'summary': f"{type.title()}: {title}",
@@ -82,73 +95,30 @@ def create_calendar_entry(title, description, start_dt=None, duration_hours=1, a
         }
         if attendee_email:
             event_body['attendees'] = [{'email': attendee_email}]
-
-    created_event = calendar_service.events().insert(calendarId=calendar_id, body=event_body).execute()
-    return created_event.get('htmlLink')
-# ------------------- STREAMLIT CLOUD GOOGLE SHEETS & CALENDAR SETUP ---------------
-import gspread
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from datetime import datetime, timedelta
-import streamlit as st
-
-# ------------------- SCOPES -------------------
-SHEETS_SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar']
-
-# ------------------- SHEETS SETUP -------------------
-try:
-    google_creds = st.secrets["google_service_account"]
-    creds_sheets = Credentials.from_service_account_info(google_creds, scopes=SHEETS_SCOPES)
-    gc = gspread.authorize(creds_sheets)
-
-    # Open worksheets
-    SHEET_NAME = "HR_Agent_Records_Cloud"
-    sheet_onboarding = gc.open(SHEET_NAME).worksheet("Onboarding")
-    sheet_resume = gc.open(SHEET_NAME).worksheet("Resume_Screening")
-    sheet_interview = gc.open(SHEET_NAME).worksheet("Interviews")
-
-except Exception as e:
-    st.warning(f"⚠ Google Sheets setup failed (Cloud): {e}")
-
-# ------------------- CALENDAR SETUP -------------------
-try:
-    creds_calendar = Credentials.from_service_account_info(google_creds, scopes=CALENDAR_SCOPES)
-    calendar_service = build('calendar', 'v3', credentials=creds_calendar)
-    calendar_id = "your_cloud_calendar_id_here"  # replace with your calendar ID
-except Exception as e:
-    st.warning(f"⚠ Google Calendar setup failed (Cloud): {e}")
-
-# ------------------- FUNCTION TO CREATE CALENDAR EVENTS -------------------
-def create_calendar_entry(title, description, start_dt=None, duration_hours=1, attendee_email=None, type='event'):
-    if calendar_service is None:
-        st.warning("⚠ Calendar service not available. Cannot create event.")
-        return None
-
-    if type.lower() == 'task':
-        event_body = {
-            'summary': f"Task: {title}",
-            'description': description,
-            'start': {'date': datetime.today().date().isoformat()},
-            'end': {'date': datetime.today().date().isoformat()},
-        }
-    else:
-        if start_dt is None:
-            st.warning("⚠ Start datetime is required for events/appointments")
-            return None
-        end_dt = start_dt + timedelta(hours=duration_hours)
-        event_body = {
-            'summary': f"{type.title()}: {title}",
-            'description': description,
-            'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Asia/Kolkata'},
-            'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Asia/Kolkata'},
-        }
-        if attendee_email:
-            event_body['attendees'] = [{'email': attendee_email}]
-
-    created_event = calendar_service.events().insert(calendarId=calendar_id, body=event_body).execute()
+    
+    created_event = calendar_service.events().insert(calendarId='primary', body=event_body).execute()
     return created_event.get('htmlLink')
 
+
+# ------------------- AI RESPONSE FUNCTION ----------------
+def ai_response(prompt):
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+# -------------------------- STREAMLIT UI -------------------------
+st.set_page_config(layout="wide", page_title="🤖 HR AI Assistant Suite", page_icon="🧑‍💼")
+st.markdown("<h1 style='text-align:center; color:#4B0082;'>🤖 HR AI Agent System</h1>", unsafe_allow_html=True)
+
+tabs = st.tabs([
+    "🧭 HR Assistant",
+    "📄 Resume Screening",
+    "🎤 AI Interview",
+    "📝 Employee Onboarding",
+    "📅 Schedule Task/Event/Appointment"
+])
 
 # ------------------- TAB 1: HR ASSISTANT -----------------
 with tabs[0]:
