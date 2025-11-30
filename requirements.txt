@@ -8,6 +8,6 @@ google-auth==2.22.0
 gspread==5.10.0
 SpeechRecognition==3.9.0
 streamlit-webrtc==0.47.0
-numpy==1.25.0
+numpy>=2.0.0
 gTTS==2.3.0
 pydub==0.25.1
