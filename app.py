@@ -179,25 +179,22 @@ Include:
 with tabs[2]:
     st.subheader("🎤 Voice-Based AI Interview System", anchor="ai_interview")
 
+    # Candidate Info Inputs
     candidate_name = st.text_input("👤 Candidate Name", key="cand_name")
     candidate_email = st.text_input("📧 Candidate Email", key="cand_email")
     role_applied = st.text_input("💼 Job Role", key="cand_role")
 
-    if "interview_started" not in st.session_state:
-        st.session_state.interview_started = False
-    if "question" not in st.session_state:
-        st.session_state.question = None
+    # Initialize session state variables
+    for var in ["interview_started", "question", "question_number", "last_eval",
+                "mic_test_passed", "mic_test_text", "audio_processor"]:
+        if var not in st.session_state:
+            st.session_state[var] = False if "passed" in var or var == "interview_started" else None
     if "question_number" not in st.session_state:
         st.session_state.question_number = 1
-    if "last_eval" not in st.session_state:
-        st.session_state.last_eval = ""
-    if "mic_test_passed" not in st.session_state:
-        st.session_state.mic_test_passed = False
-    if "mic_test_text" not in st.session_state:
-        st.session_state.mic_test_text = ""
 
     st.markdown("### 🎤 Microphone Test (Before Starting Interview)")
 
+    # Microphone Test Processor
     class MicTestProcessor:
         def __init__(self):
             self.audio = None
@@ -209,31 +206,17 @@ with tabs[2]:
             return frame
 
     mic_test_processor = MicTestProcessor()
-
-    # ----- Safe webrtc_streamer call -----
-    try:
-        mic_test_ctx = webrtc_streamer(
-            key="mic_test",
-            mode=WebRtcMode.SENDRECV,
-            audio_processor_factory=lambda: mic_test_processor,
-            media_stream_constraints={
-                "audio": {
-                    "deviceId": "default",
-                    "echoCancellation": True,
-                    "noiseSuppression": True,
-                    "autoGainControl": True,
-                    "advanced": [
-                        {"echoCancellation": True},
-                        {"noiseSuppression": True},
-                        {"autoGainControl": True}
-                    ]
-                },
-                "video": False
-            },
-            async_processing=True
-        )
-    except Exception as e:
-        st.warning(f"⚠ Microphone initialization failed: {e}")
+    mic_test_ctx = webrtc_streamer(
+        key="mic_test",
+        mode=WebRtcMode.SENDRECV,
+        audio_processor_factory=lambda: mic_test_processor,
+        media_stream_constraints={"audio": {"deviceId": "default",
+                                             "echoCancellation": True,
+                                             "noiseSuppression": True,
+                                             "autoGainControl": True},
+                                  "video": False},
+        async_processing=True
+    )
 
     st.info("💡 Speak something like: 'Testing microphone, one two three'")
 
@@ -243,7 +226,9 @@ with tabs[2]:
         else:
             try:
                 recognizer = sr.Recognizer()
-                audio_data = sr.AudioData(mic_test_processor.audio.tobytes(), sample_rate=48000, sample_width=2)
+                audio_data = sr.AudioData(mic_test_processor.audio.tobytes(),
+                                          sample_rate=48000,
+                                          sample_width=2)
                 transcript = recognizer.recognize_google(audio_data)
                 st.session_state.mic_test_text = transcript
                 st.success(f"🎉 Microphone works! You said: **{transcript}**")
@@ -255,16 +240,19 @@ with tabs[2]:
     if not st.session_state.mic_test_passed:
         st.warning("⚠ Please complete microphone test before starting the interview.")
 
+    # Start Interview
     if st.button("🟢 Start Interview") and st.session_state.mic_test_passed:
         if not role_applied.strip():
             st.error("⚠ Enter job role first.")
         else:
             st.session_state.interview_started = True
             st.session_state.question_number = 1
-            st.session_state.question = ai_response(f"Generate ONLY the first interview question for {role_applied}. Make it technical and role specific.")
+            st.session_state.question = ai_response(
+                f"Generate ONLY the first interview question for {role_applied}. Make it technical and role specific."
+            )
             st.success("✅ Interview Started!")
 
-            # ---- Add downloadable calendar invite ----
+            # Downloadable Calendar Invite
             interview_start = datetime.now().strftime("%Y%m%dT%H%M%S")
             interview_end = (datetime.now() + timedelta(minutes=30)).strftime("%Y%m%dT%H%M%S")
             ics_content = f"""BEGIN:VCALENDAR
@@ -284,64 +272,58 @@ END:VCALENDAR"""
                 mime="text/calendar"
             )
 
-    # Function to speak text
+    # Speak text function
     def speak_text(text):
         tts = gTTS(text, lang="en", tld="co.in")
         tts.save("question.mp3")
-        audio_file = open("question.mp3", "rb").read()
-        st.audio(audio_file, format="audio/mp3")
+        st.audio("question.mp3", format="audio/mp3")
 
+    # Show current question and record answer
     if st.session_state.interview_started and st.session_state.question:
         st.markdown(f"### 📝 Question {st.session_state.question_number}")
         st.write(st.session_state.question)
         speak_text(st.session_state.question)
         st.warning("🎙 Please speak your answer. Recording is active...")
 
-        class AudioProcessor:
-            def __init__(self):
-                self.audio = None
-            def recv_audio(self, frame: av.AudioFrame):
-                arr = frame.to_ndarray()
-                if arr.ndim > 1:
-                    arr = arr.mean(axis=0).astype(np.int16)
-                self.audio = arr
-                return frame
+        # Audio Processor
+        if st.session_state.audio_processor is None:
+            class AudioProcessor:
+                def __init__(self):
+                    self.audio = None
+                def recv_audio(self, frame: av.AudioFrame):
+                    arr = frame.to_ndarray()
+                    if arr.ndim > 1:
+                        arr = arr.mean(axis=0).astype(np.int16)
+                    self.audio = arr
+                    return frame
+            st.session_state.audio_processor = AudioProcessor()
 
-        audio_processor = AudioProcessor()
-        try:
-            cctx = webrtc_streamer(
-                key=f"audio_{st.session_state.question_number}",
-                mode=WebRtcMode.SENDRECV,
-                audio_processor_factory=lambda: audio_processor,
-                media_stream_constraints={
-                    "audio": {
-                        "deviceId": "default",
-                        "echoCancellation": True,
-                        "noiseSuppression": True,
-                        "autoGainControl": True,
-                        "advanced": [
-                            {"echoCancellation": True},
-                            {"noiseSuppression": True},
-                            {"autoGainControl": True}
-                        ]
-                    },
-                    "video": False
-                },
-                async_processing=True
-            )
-        except Exception as e:
-            st.warning(f"⚠ Audio recorder initialization failed: {e}")
+        audio_ctx = webrtc_streamer(
+            key=f"audio_{st.session_state.question_number}",
+            mode=WebRtcMode.SENDRECV,
+            audio_processor_factory=lambda: st.session_state.audio_processor,
+            media_stream_constraints={"audio": {"deviceId": "default",
+                                                 "echoCancellation": True,
+                                                 "noiseSuppression": True,
+                                                 "autoGainControl": True},
+                                      "video": False},
+            async_processing=True
+        )
 
         if st.button("🟢 Submit Answer"):
-            if audio_processor.audio is None:
+            processor = st.session_state.audio_processor
+            if processor.audio is None:
                 st.error("⚠ No voice detected! Please speak again.")
             else:
                 try:
                     rec = sr.Recognizer()
-                    audio_data = sr.AudioData(audio_processor.audio.tobytes(), sample_rate=48000, sample_width=2)
+                    audio_data = sr.AudioData(processor.audio.tobytes(),
+                                              sample_rate=48000,
+                                              sample_width=2)
                     transcript = rec.recognize_google(audio_data)
                     st.info(f"🗣 You Said: {transcript}")
 
+                    # AI evaluation
                     evaluation = ai_response(f"""
 Evaluate this candidate's response for role {role_applied}.
 Question: {st.session_state.question}
@@ -355,6 +337,7 @@ Return:
                     st.success(evaluation)
                     st.session_state.last_eval = evaluation
 
+                    # Save to Google Sheet
                     if sheet_interview:
                         try:
                             sheet_interview.append_row([candidate_name, candidate_email, role_applied,
@@ -363,16 +346,21 @@ Return:
                         except:
                             pass
 
+                    # Move to next question
                     if st.session_state.question_number < 5:
                         st.session_state.question_number += 1
-                        st.session_state.question = ai_response(f"Generate the next interview question for {role_applied}. Avoid repeating previous topics.")
-                        st.experimental_rerun()
+                        st.session_state.question = ai_response(
+                            f"Generate the next interview question for {role_applied}. Avoid repeating previous topics."
+                        )
+                        st.session_state.audio_processor = None  # Reset processor for next question
                     else:
                         st.success("✅ Interview Completed. Maximum 5 questions reached.")
+                        st.session_state.interview_started = False
 
                 except Exception as e:
                     st.error(f"❌ Error processing audio: {e}")
 
+    # Last evaluation
     if st.session_state.last_eval:
         st.markdown("### 🧾 Last Evaluation")
         st.write(st.session_state.last_eval)
